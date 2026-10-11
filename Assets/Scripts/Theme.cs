@@ -19,7 +19,12 @@ public static class Theme
 
     public static readonly Color ButtonPrimary = new Color32(0xFF, 0xD2, 0x3F, 0xFF);
     public static readonly Color ButtonPrimaryText = new Color32(0x1B, 0x10, 0x36, 0xFF);
-    public static readonly Color ButtonSecondary = new Color32(0xFF, 0xFF, 0xFF, 0x26);
+    // Buttons have a face plus a solid darker edge underneath that makes them look raised
+    public static readonly Color ButtonPrimaryEdge = new Color32(0xD9, 0x7A, 0x0F, 0xFF);
+    public static readonly Color ButtonSecondary = new Color32(0x2A, 0x1C, 0x5E, 0xF0);
+    public static readonly Color ButtonSecondaryOff = new Color32(0x1A, 0x12, 0x3A, 0xC0);
+    public static readonly Color ButtonSecondaryEdge = new Color32(0x0E, 0x07, 0x24, 0xF0);
+    public static readonly Color ButtonOutline = new Color(1f, 1f, 1f, 0.16f);
 
     // The walls change colour every level so players can feel the game moving on
     public static readonly Color[] LevelColors =
@@ -29,6 +34,17 @@ public static class Theme
         new Color32(0xB4, 0x7C, 0xFF, 0xFF), // purple
         new Color32(0xFF, 0x8E, 0x3C, 0xFF), // orange
         new Color32(0xFF, 0x5C, 0xC8, 0xFF), // pink
+        new Color32(0xFF, 0x3B, 0x6B, 0xFF), // red
+    };
+
+    // Power-up colours, in PowerUpType order: Wide, Slow, Shield, Double, Tiny, Fast
+    public static readonly Color[] PowerUpColors =
+    {
+        new Color32(0x5C, 0xFF, 0x8A, 0xFF), // green
+        new Color32(0x3D, 0xF5, 0xFF, 0xFF), // cyan
+        new Color32(0xB4, 0x7C, 0xFF, 0xFF), // purple
+        new Color32(0xFF, 0xD2, 0x3F, 0xFF), // yellow
+        new Color32(0xFF, 0x3B, 0x6B, 0xFF), // red
         new Color32(0xFF, 0x3B, 0x6B, 0xFF), // red
     };
 }

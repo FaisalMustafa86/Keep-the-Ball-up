@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public enum Sound { Paddle, Perfect, Wall, Launch, GameOver, Click, LevelUp, Tick, Go }
+public enum Sound { Paddle, Perfect, Wall, Launch, GameOver, Click, LevelUp, Tick, Go, PowerUp, PowerDown, PowerUpEnd, Shield }
 
 // Simple retro sounds made in code, so the game needs no audio files.
 public static class SoundFX
@@ -12,7 +12,7 @@ public static class SoundFX
 
     public static void Init(GameObject host)
     {
-        source = host.AddComponent<AudioSource>();
+        source = SceneObjects.GetOrAdd<AudioSource>(host);
         source.playOnAwake = false;
 
         clips = new AudioClip[System.Enum.GetValues(typeof(Sound)).Length];
@@ -25,13 +25,15 @@ public static class SoundFX
         clips[(int)Sound.LevelUp] = Arpeggio(new[] { 523f, 659f, 784f, 1047f }, 0.08f, 0.3f);
         clips[(int)Sound.Tick] = Tone(600f, 600f, 0.08f, 0.25f);
         clips[(int)Sound.Go] = Tone(900f, 900f, 0.2f, 0.3f);
-
-        Settings.ApplySound();
+        clips[(int)Sound.PowerUp] = Arpeggio(new[] { 660f, 880f, 1320f }, 0.06f, 0.3f);
+        clips[(int)Sound.PowerDown] = Tone(700f, 180f, 0.35f, 0.35f);
+        clips[(int)Sound.PowerUpEnd] = Tone(520f, 360f, 0.12f, 0.2f);
+        clips[(int)Sound.Shield] = Tone(300f, 1200f, 0.22f, 0.35f);
     }
 
     public static void Play(Sound sound, float pitch = 1f)
     {
-        if (source == null) return;
+        if (source == null || !Settings.SoundOn) return;
         source.pitch = pitch;
         source.PlayOneShot(clips[(int)sound]);
     }

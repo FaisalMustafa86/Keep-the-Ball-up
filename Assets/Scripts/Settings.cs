@@ -3,46 +3,54 @@ using UnityEngine;
 // Player settings and best score, saved on the device between sessions.
 public static class Settings
 {
+    // Sound effects (bounces, clicks...)
     public static bool SoundOn
     {
         get => PlayerPrefs.GetInt("Sound", 1) == 1;
-        set
-        {
-            PlayerPrefs.SetInt("Sound", value ? 1 : 0);
-            PlayerPrefs.Save();
-            ApplySound();
-        }
+        set => SetBool("Sound", value);
+    }
+
+    // Background music
+    public static bool MusicOn
+    {
+        get => PlayerPrefs.GetInt("Music", 1) == 1;
+        set => SetBool("Music", value);
     }
 
     public static bool VibrationOn
     {
         get => PlayerPrefs.GetInt("Vibration", 1) == 1;
+        set => SetBool("Vibration", value);
+    }
+
+    // Difficulty mode picked on the menu
+    public static GameMode Mode
+    {
+        get => (GameMode)Mathf.Clamp(PlayerPrefs.GetInt("Mode", (int)GameMode.Normal), 0, Difficulty.All.Length - 1);
         set
         {
-            PlayerPrefs.SetInt("Vibration", value ? 1 : 0);
+            PlayerPrefs.SetInt("Mode", (int)value);
             PlayerPrefs.Save();
         }
     }
 
+    // Best score in the current mode
     public static int BestScore
     {
-        get => PlayerPrefs.GetInt("BestScore", 0);
+        get => PlayerPrefs.GetInt(BestScoreKey(Mode), 0);
         set
         {
-            PlayerPrefs.SetInt("BestScore", value);
+            PlayerPrefs.SetInt(BestScoreKey(Mode), value);
             PlayerPrefs.Save();
         }
     }
 
-    public static void ApplySound()
-    {
-        AudioListener.volume = SoundOn ? 1f : 0f;
-    }
+    // Normal keeps the original key, so best scores from before modes existed aren't lost
+    private static string BestScoreKey(GameMode mode) => mode == GameMode.Normal ? "BestScore" : "BestScore" + mode;
 
-    public static void Vibrate()
+    private static void SetBool(string key, bool value)
     {
-#if UNITY_ANDROID || UNITY_IOS
-        if (VibrationOn) Handheld.Vibrate();
-#endif
+        PlayerPrefs.SetInt(key, value ? 1 : 0);
+        PlayerPrefs.Save();
     }
 }

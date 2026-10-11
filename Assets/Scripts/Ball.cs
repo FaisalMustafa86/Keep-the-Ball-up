@@ -32,9 +32,20 @@ public class Ball : MonoBehaviour
 
     public bool IsLaunched => launched;
 
+    // Set by the SLOW and FAST power-ups: how fast the ball moves compared to its real speed
+    public float SpeedMultiplier { get; set; } = 1f;
+
+    // Set by the SHIELD power-up: the ball bounces back up once at this height instead of falling out
+    public bool HasShield { get; set; }
+    public float ShieldY { get; set; }
+
     private PlayerController paddle;
     private Vector2 velocity;
     private float speed;
+
+    // Set from the difficulty mode
+    private float speedScale = 1f;
+    private float gainScale = 1f;
     private bool launched;
     private bool frozen;
 
@@ -47,40 +58,44 @@ public class Ball : MonoBehaviour
         paddle = player;
         transform.localScale = Vector3.one * radius * 2f;
 
-        SpriteRenderer sr = gameObject.AddComponent<SpriteRenderer>();
-        sr.sprite = SpriteFactory.Circle;
-        sr.color = Theme.Ball;
-        sr.sortingLayerName = "Player";
-        sr.sortingOrder = 10;
+        if (!TryGetComponent(out SpriteRenderer sr))
+        {
+            sr = gameObject.AddComponent<SpriteRenderer>();
+            sr.sprite = SpriteFactory.Circle;
+            sr.color = Theme.Ball;
+            sr.sortingLayerName = "Player";
+            sr.sortingOrder = 10;
+        }
 
-        GameObject glowObject = new GameObject("Glow");
-        glowObject.transform.SetParent(transform, false);
-        glowObject.transform.localScale = Vector3.one * 3.5f;
-        SpriteRenderer glow = glowObject.AddComponent<SpriteRenderer>();
-        glow.sprite = SpriteFactory.Glow;
-        glow.color = new Color(Theme.BallGlow.r, Theme.BallGlow.g, Theme.BallGlow.b, 0.45f);
-        glow.sortingLayerName = "Player";
-        glow.sortingOrder = 8;
+        if (SceneObjects.GetOrCreate(transform, "Glow", out SpriteRenderer glow))
+        {
+            glow.transform.localScale = Vector3.one * 3.5f;
+            glow.sprite = SpriteFactory.Glow;
+            glow.color = new Color(Theme.BallGlow.r, Theme.BallGlow.g, Theme.BallGlow.b, 0.45f);
+            glow.sortingLayerName = "Player";
+            glow.sortingOrder = 8;
+        }
 
         // Fading copies of the ball that follow behind it
-        Transform trailParent = new GameObject("Ball Trail").transform;
+        SceneObjects.GetOrCreate(transform.parent, "Ball Trail", out GameObject trailObject);
+        Transform trailParent = trailObject.transform;
         trail = new Transform[TrailLength];
         trailRenderers = new SpriteRenderer[TrailLength];
         history = new Vector3[TrailLength];
         for (int i = 0; i < TrailLength; i++)
         {
-            GameObject ghost = new GameObject("Trail " + i);
-            ghost.transform.SetParent(trailParent);
-            SpriteRenderer ghostRenderer = ghost.AddComponent<SpriteRenderer>();
-            ghostRenderer.sprite = SpriteFactory.Circle;
-            ghostRenderer.sortingLayerName = "Player";
-            ghostRenderer.sortingOrder = 9;
+            if (SceneObjects.GetOrCreate(trailParent, "Trail " + i, out SpriteRenderer ghostRenderer))
+            {
+                ghostRenderer.sprite = SpriteFactory.Circle;
+                ghostRenderer.sortingLayerName = "Player";
+                ghostRenderer.sortingOrder = 9;
 
-            float t = 1f - (float)(i + 1) / (TrailLength + 1);
-            ghostRenderer.color = new Color(Theme.BallGlow.r, Theme.BallGlow.g, Theme.BallGlow.b, 0.35f * t);
-            ghost.transform.localScale = Vector3.one * radius * 2f * Mathf.Lerp(0.3f, 0.9f, t);
+                float t = 1f - (float)(i + 1) / (TrailLength + 1);
+                ghostRenderer.color = new Color(Theme.BallGlow.r, Theme.BallGlow.g, Theme.BallGlow.b, 0.35f * t);
+                ghostRenderer.transform.localScale = Vector3.one * radius * 2f * Mathf.Lerp(0.3f, 0.9f, t);
+            }
 
-            trail[i] = ghost.transform;
+            trail[i] = ghostRenderer.transform;
             trailRenderers[i] = ghostRenderer;
         }
     }
@@ -91,22 +106,22 @@ public class Ball : MonoBehaviour
 
         if (!launched)
         {
-            // Sit on the paddle until launched
-            transform.position = new Vector3(paddle.X, paddle.TopY + radius + 0.02f, 0f);
+            PlaceOnPaddle();
             ClearTrail();
             return;
         }
 
         // Slowly speed up over time
-        speed = Mathf.Min(speed + speedIncreasePerSecond * Time.deltaTime, maxSpeed);
+        speed = Mathf.Min(speed + speedIncreasePerSecond * gainScale * Time.deltaTime, maxSpeed * speedScale);
         velocity = velocity.normalized * speed;
 
         // Move in small steps so a fast ball can never pass through the paddle or a wall
-        float distance = speed * Time.deltaTime;
+        float moveTime = Time.deltaTime * SpeedMultiplier;
+        float distance = speed * moveTime;
         int steps = Mathf.Max(1, Mathf.CeilToInt(distance / (radius * 0.5f)));
         for (int i = 0; i < steps && launched; i++)
         {
-            Step(Time.deltaTime / steps);
+            Step(moveTime / steps);
         }
 
         UpdateTrail();
@@ -154,12 +169,20 @@ public class Ball : MonoBehaviour
             float offset = Mathf.Clamp((p.x - paddle.X) / paddle.HalfWidth, -1f, 1f);
             float angle = offset * maxBounceAngle * Mathf.Deg2Rad;
 
-            speed = Mathf.Min(speed + speedIncreasePerHit, maxSpeed);
+            speed = Mathf.Min(speed + speedIncreasePerHit * gainScale, maxSpeed * speedScale);
             velocity = new Vector2(Mathf.Sin(angle), Mathf.Cos(angle)) * speed;
             p.y = paddle.TopY + radius;
 
             paddle.OnHit();
             GameManager.Instance.OnPaddleHit(p, Mathf.Abs(offset) <= perfectZone);
+        }
+        else if (HasShield && velocity.y < 0f && p.y - radius < ShieldY)
+        {
+            p.y = ShieldY + radius;
+            velocity.y = Mathf.Abs(velocity.y);
+            KeepDirectionPlayable();
+            HasShield = false;
+            GameManager.Instance.OnShieldUsed(p);
         }
 
         transform.position = p;
@@ -177,16 +200,30 @@ public class Ball : MonoBehaviour
         velocity = direction * speed;
     }
 
+    // Difficulty mode: scales the start and top speed, and how quickly the ball speeds up
+    public void SetDifficulty(float speedScale, float gainScale)
+    {
+        this.speedScale = speedScale;
+        this.gainScale = gainScale;
+    }
+
     // Puts the ball on top of the paddle, waiting to be launched
     public void ResetBall()
     {
         launched = false;
         frozen = false;
         Held = false;
-        speed = startSpeed;
+        speed = startSpeed * speedScale;
         velocity = Vector2.zero;
         gameObject.SetActive(true);
+        PlaceOnPaddle();
         ClearTrail();
+    }
+
+    // Sit on the paddle until launched
+    private void PlaceOnPaddle()
+    {
+        transform.position = new Vector3(paddle.X, paddle.TopY + radius + 0.02f, 0f);
     }
 
     public void Launch()

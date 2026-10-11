@@ -30,6 +30,12 @@ public class Arena : MonoBehaviour
     private Rect lastSafeArea;
     private float screenHalfWidth;
 
+    // Set when building the scene in the editor: outside Play mode, Screen.width/height aren't the Game view's size
+    private Vector2Int? editorScreenSize;
+    private int ScreenWidth => editorScreenSize?.x ?? Screen.width;
+    private int ScreenHeight => editorScreenSize?.y ?? Screen.height;
+    private Rect SafeArea => editorScreenSize.HasValue ? new Rect(0f, 0f, ScreenWidth, ScreenHeight) : Screen.safeArea;
+
     private SpriteRenderer background;
     private SpriteRenderer dangerZone;
     private SpriteRenderer leftWall;
@@ -43,24 +49,27 @@ public class Arena : MonoBehaviour
     private float[] starSpeeds;
     private float[] starPhases;
 
-    public void Init(Camera camera, SpriteRenderer existingBackground)
+    public void Init(Camera camera, Vector2Int? editorScreenSize = null)
     {
         Instance = this;
+        this.editorScreenSize = editorScreenSize;
         cam = camera;
         center = cam.transform.position;
 
-        background = existingBackground != null ? existingBackground : CreateSprite("Background", null);
-        background.sprite = SpriteFactory.VerticalGradient(Theme.BackgroundBottom, Theme.BackgroundTop);
-        background.color = Color.white;
-        background.sortingLayerName = "Background";
-        background.sortingOrder = 0;
-        background.transform.rotation = Quaternion.identity;
+        if (SceneObjects.GetOrCreate(transform, "Background", out background))
+        {
+            background.sprite = SpriteFactory.BackgroundGradient;
+            background.sortingLayerName = "Background";
+            background.sortingOrder = 0;
+        }
 
-        dangerZone = CreateSprite("Danger Zone", transform);
-        dangerZone.sprite = SpriteFactory.VerticalGradient(new Color(1f, 1f, 1f, 0.35f), new Color(1f, 1f, 1f, 0f));
-        dangerZone.color = Theme.Danger;
-        dangerZone.sortingLayerName = "Background";
-        dangerZone.sortingOrder = 2;
+        if (SceneObjects.GetOrCreate(transform, "Danger Zone", out dangerZone))
+        {
+            dangerZone.sprite = SpriteFactory.DangerGradient;
+            dangerZone.color = Theme.Danger;
+            dangerZone.sortingLayerName = "Background";
+            dangerZone.sortingOrder = 2;
+        }
 
         leftWall = CreateWall("Left Wall");
         rightWall = CreateWall("Right Wall");
@@ -98,13 +107,14 @@ public class Arena : MonoBehaviour
 
     private void Fit()
     {
-        lastScreenWidth = Screen.width;
-        lastScreenHeight = Screen.height;
-        lastSafeArea = Screen.safeArea;
+        lastScreenWidth = ScreenWidth;
+        lastScreenHeight = ScreenHeight;
+        lastSafeArea = SafeArea;
 
-        cam.orthographicSize = Mathf.Max(PlayWidth / 2f / cam.aspect, MinHalfHeight);
+        float aspect = editorScreenSize.HasValue ? (float)ScreenWidth / ScreenHeight : cam.aspect;
+        cam.orthographicSize = Mathf.Max(PlayWidth / 2f / aspect, MinHalfHeight);
         float halfHeight = cam.orthographicSize;
-        float halfWidth = halfHeight * cam.aspect;
+        float halfWidth = halfHeight * aspect;
         screenHalfWidth = halfWidth;
 
         float left = center.x - halfWidth;
@@ -112,9 +122,9 @@ public class Arena : MonoBehaviour
         float bottom = center.y - halfHeight;
 
         // Convert the safe area (in pixels) to world heights, to stay clear of notches and home bars
-        Rect safe = Screen.safeArea;
-        float safeTop = bottom + safe.yMax / Screen.height * halfHeight * 2f;
-        float safeBottom = bottom + safe.yMin / Screen.height * halfHeight * 2f;
+        Rect safe = SafeArea;
+        float safeTop = bottom + safe.yMax / ScreenHeight * halfHeight * 2f;
+        float safeBottom = bottom + safe.yMin / ScreenHeight * halfHeight * 2f;
 
         // A little bigger than the screen so camera shake never shows the edges
         Place(background.transform, center, new Vector2(halfWidth * 2f + 2f, halfHeight * 2f + 2f), background.sprite);
@@ -168,10 +178,12 @@ public class Arena : MonoBehaviour
 
     private SpriteRenderer CreateWall(string name)
     {
-        SpriteRenderer sr = CreateSprite(name, transform);
-        sr.sprite = SpriteFactory.Square;
-        sr.color = wallColor;
-        sr.sortingLayerName = "Player";
+        if (SceneObjects.GetOrCreate(transform, name, out SpriteRenderer sr))
+        {
+            sr.sprite = SpriteFactory.Square;
+            sr.color = wallColor;
+            sr.sortingLayerName = "Player";
+        }
         return sr;
     }
 
@@ -182,31 +194,26 @@ public class Arena : MonoBehaviour
         starSpeeds = new float[StarCount];
         starPhases = new float[StarCount];
 
-        Transform parent = new GameObject("Stars").transform;
-        parent.SetParent(transform);
+        SceneObjects.GetOrCreate(transform, "Stars", out GameObject starsObject);
+        Transform parent = starsObject.transform;
 
         for (int i = 0; i < StarCount; i++)
         {
-            SpriteRenderer sr = CreateSprite("Star", parent);
-            sr.sprite = SpriteFactory.Circle;
-            sr.color = Theme.Stars;
-            sr.sortingLayerName = "Background";
-            sr.sortingOrder = 1;
-            float size = Random.Range(0.03f, 0.09f);
-            sr.transform.localScale = new Vector3(size, size, 1f);
+            if (SceneObjects.GetOrCreate(parent, "Star " + i, out SpriteRenderer sr))
+            {
+                sr.sprite = SpriteFactory.Circle;
+                sr.color = Theme.Stars;
+                sr.sortingLayerName = "Background";
+                sr.sortingOrder = 1;
+                float size = Random.Range(0.03f, 0.09f);
+                sr.transform.localScale = new Vector3(size, size, 1f);
+            }
 
             stars[i] = sr.transform;
             starRenderers[i] = sr;
             starSpeeds[i] = Random.Range(0.1f, 0.4f);
             starPhases[i] = Random.Range(0f, Mathf.PI * 2f);
         }
-    }
-
-    private static SpriteRenderer CreateSprite(string name, Transform parent)
-    {
-        GameObject go = new GameObject(name);
-        if (parent != null) go.transform.SetParent(parent);
-        return go.AddComponent<SpriteRenderer>();
     }
 
     private static void Place(Transform target, Vector2 position, Vector2 size, Sprite sprite)

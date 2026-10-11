@@ -5,7 +5,7 @@ using UnityEngine.UI;
 // Objects are created once and reused so nothing is spawned or destroyed during play.
 public class Effects : MonoBehaviour
 {
-    private const int ParticleCount = 80;
+    private const int ParticleCount = 140;
     private const int PopupCount = 6;
 
     private struct Particle
@@ -35,33 +35,39 @@ public class Effects : MonoBehaviour
     {
         cam = camera;
 
-        Transform parent = new GameObject("Particles").transform;
+        SceneObjects.GetOrCreate(transform, "Particles", out GameObject particlesObject);
+        Transform parent = particlesObject.transform;
         particles = new Particle[ParticleCount];
         for (int i = 0; i < ParticleCount; i++)
         {
-            GameObject go = new GameObject("Particle");
-            go.transform.SetParent(parent);
-            SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = SpriteFactory.Circle;
-            sr.sortingLayerName = "Player";
-            sr.sortingOrder = 20;
+            if (SceneObjects.GetOrCreate(parent, "Particle " + i, out SpriteRenderer sr))
+            {
+                sr.sprite = SpriteFactory.Circle;
+                sr.sortingLayerName = "Player";
+                sr.sortingOrder = 20;
+            }
             sr.enabled = false;
-            particles[i] = new Particle { transform = go.transform, renderer = sr };
+            particles[i] = new Particle { transform = sr.transform, renderer = sr };
         }
 
         popups = new Popup[PopupCount];
         for (int i = 0; i < PopupCount; i++)
         {
-            GameObject go = new GameObject("Popup");
-            go.transform.SetParent(canvas.transform, false);
-            Text text = go.AddComponent<Text>();
-            text.font = font;
-            text.fontSize = 60;
-            text.fontStyle = FontStyle.Bold;
-            text.alignment = TextAnchor.MiddleCenter;
-            text.horizontalOverflow = HorizontalWrapMode.Overflow;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
-            text.raycastTarget = false;
+            if (SceneObjects.GetOrCreate(canvas.transform, "Popup " + i, out GameObject go, typeof(RectTransform), typeof(Text)))
+            {
+                Text newText = go.GetComponent<Text>();
+                newText.font = font;
+                newText.fontSize = 60;
+                newText.fontStyle = font.name.StartsWith("LegacyRuntime") ? FontStyle.Bold : FontStyle.Normal;
+                newText.alignment = TextAnchor.MiddleCenter;
+                newText.horizontalOverflow = HorizontalWrapMode.Overflow;
+                newText.verticalOverflow = VerticalWrapMode.Overflow;
+                newText.raycastTarget = false;
+                Shadow shadow = go.AddComponent<Shadow>();
+                shadow.effectColor = new Color(0.05f, 0.02f, 0.15f, 0.5f);
+                shadow.effectDistance = new Vector2(0f, -4f);
+            }
+            Text text = SceneObjects.GetOrAdd<Text>(go);
             text.enabled = false;
             popups[i] = new Popup { text = text };
         }

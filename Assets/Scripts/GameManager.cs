@@ -6,8 +6,9 @@ using UnityEngine.InputSystem.EnhancedTouch;
 #endif
 
 // Runs the game: builds the arena, paddle, ball and UI when the app starts, keeps score,
-// makes the game harder as you go, and moves between the menu / countdown / playing / paused / game over screens.
-// There is nothing to set up in the scene: if no GameManager exists, one is created automatically.
+// makes the game harder as you go (and per difficulty mode), handles power-ups, and moves between the menu / countdown / playing / paused / game over screens.
+// Its objects are saved in the scene by Tools > Keep the Ball Up > Build Scene, so they can be seen and edited in the Editor.
+// Anything missing is created when the game starts, and if there is no GameManager at all, one is created automatically.
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
@@ -23,6 +24,10 @@ public class GameManager : MonoBehaviour
 
     private enum State { Menu, Countdown, Playing, Paused, GameOver }
 
+    // Bump this when the UI or power-up objects change design, so older copies saved in the scene get replaced
+    private const int DesignVersion = 4;
+    [SerializeField, HideInInspector] private int designVersion;
+
     private State state;
     private int score;
     private int level;
@@ -36,6 +41,10 @@ public class GameManager : MonoBehaviour
     private Effects effects;
     private CameraShake cameraShake;
     private GameUI ui;
+    private Music music;
+    private PowerUps powerUps;
+
+    public bool IsPlaying => state == State.Playing;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateIfMissing()
@@ -60,37 +69,76 @@ public class GameManager : MonoBehaviour
         TouchSimulation.Enable();
 #endif
 
-        SoundFX.Init(gameObject);
-        BuildWorld();
-
-        ui = gameObject.AddComponent<GameUI>();
-        ui.Init(this, cam);
-        effects = gameObject.AddComponent<Effects>();
-        effects.Init(cam, ui.HudCanvas, ui.Font);
-
+        Build();
         GoToMenu();
     }
 
-    private void BuildWorld()
+    // Finds the game's objects under this GameManager and creates any that are missing.
+    // The editor's Build Scene also calls this outside Play mode, passing the Game view size
+    // because Screen.width/height aren't reliable there.
+    public void Build(Vector2Int? editorScreenSize = null)
     {
+        if (designVersion < DesignVersion)
+        {
+            ReplaceOutdatedObjects();
+            designVersion = DesignVersion;
+        }
+
+        SoundFX.Init(gameObject);
+        music = SceneObjects.GetOrAdd<Music>(gameObject);
+        music.Init();
+        BuildWorld(editorScreenSize);
+
+        ui = SceneObjects.GetOrAdd<GameUI>(gameObject);
+        ui.Init(this, cam);
+        effects = SceneObjects.GetOrAdd<Effects>(gameObject);
+        effects.Init(cam, ui.HudCanvas, ui.Font);
+        powerUps = SceneObjects.GetOrAdd<PowerUps>(gameObject);
+        powerUps.Init(this, player, ball, arena, effects, ui, cam);
+
+        // In the Editor, show the start of a round: ball on the paddle, level 1
+        if (!Application.isPlaying) ResetRound();
+    }
+
+    // The menus, HUD and power-ups saved in the scene are from an older design: remove them so they're rebuilt.
+    // (Only these get replaced; the arena, paddle and ball keep any changes made in the Inspector.)
+    private void ReplaceOutdatedObjects()
+    {
+        foreach (string name in new[] { "Score Canvas", "HUD Canvas", "Power Ups" })
+        {
+            Transform old = transform.Find(name);
+            if (old == null) continue;
+
+            // Detach first so the rebuild below doesn't find it before it's destroyed
+            old.SetParent(null);
+            if (Application.isPlaying) Destroy(old.gameObject);
+            else DestroyImmediate(old.gameObject);
+        }
+    }
+
+    private void BuildWorld(Vector2Int? editorScreenSize)
+    {
+        // Old stand-ins from before the game built its own objects. Build Scene deletes them from the scene;
+        // if it hasn't been run, remove them for this play session so they don't cover the game.
+        if (Application.isPlaying)
+        {
+            foreach (GameObject root in gameObject.scene.GetRootGameObjects())
+            {
+                if (root.name == "Background" || root.name == "player") Destroy(root);
+            }
+        }
+
         cam = Camera.main;
         cam.backgroundColor = Theme.BackgroundTop;
-        cameraShake = cam.GetComponent<CameraShake>();
-        if (cameraShake == null) cameraShake = cam.gameObject.AddComponent<CameraShake>();
+        cameraShake = SceneObjects.GetOrAdd<CameraShake>(cam.gameObject);
 
-        GameObject backgroundObject = GameObject.Find("Background");
-        SpriteRenderer background = backgroundObject != null ? backgroundObject.GetComponent<SpriteRenderer>() : null;
+        SceneObjects.GetOrCreate(transform, "Arena", out arena);
+        arena.Init(cam, editorScreenSize);
 
-        arena = new GameObject("Arena").AddComponent<Arena>();
-        arena.Init(cam, background);
-
-        GameObject playerObject = GameObject.Find("player");
-        if (playerObject == null) playerObject = new GameObject("player");
-        player = playerObject.GetComponent<PlayerController>();
-        if (player == null) player = playerObject.AddComponent<PlayerController>();
+        SceneObjects.GetOrCreate(transform, "Paddle", out player);
         player.Init();
 
-        ball = new GameObject("Ball").AddComponent<Ball>();
+        SceneObjects.GetOrCreate(transform, "Ball", out ball);
         ball.Init(player);
     }
 
@@ -130,6 +178,7 @@ public class GameManager : MonoBehaviour
         player.InputEnabled = false;
         ui.SetScoreVisible(false);
         ui.ShowMenu(Settings.BestScore);
+        music.SetMood(Music.Mood.Menu);
     }
 
     public void Play()
@@ -153,6 +202,7 @@ public class GameManager : MonoBehaviour
         Time.timeScale = 0f;
         player.InputEnabled = false;
         ui.ShowPause(score);
+        music.SetMood(Music.Mood.Muffled);
     }
 
     public void Resume()
@@ -170,12 +220,19 @@ public class GameManager : MonoBehaviour
         score = 0;
         level = 1;
         perfectStreak = 0;
-        player.SetWidth(player.StartWidth);
+
+        Difficulty difficulty = Difficulty.Current;
+        ball.SetDifficulty(difficulty.BallSpeed, difficulty.SpeedGain);
+        powerUps.ResetAll();
+        player.SetWidth(BasePaddleWidth());
         player.ResetPosition();
+        ball.SpeedMultiplier = 1f;
         ball.ResetBall();
         arena.SetWallColor(LevelColor(level));
+        ui.SetBest(Settings.BestScore);
         ui.SetScore(0, false);
         ui.SetLevel(level, LevelColor(level), false);
+        music.SetLevel(level);
     }
 
     private IEnumerator Countdown(bool launchBall)
@@ -184,6 +241,7 @@ public class GameManager : MonoBehaviour
         Time.timeScale = 1f;
         player.InputEnabled = true;
         ui.SetScoreVisible(true);
+        music.SetMood(Music.Mood.Playing);
 
         for (int i = 3; i > 0; i--)
         {
@@ -219,20 +277,21 @@ public class GameManager : MonoBehaviour
     {
         if (state != State.Playing) return;
 
-        // Perfect hits in a row are worth more: +2, +3, +4...
+        // Perfect hits in a row are worth more: +2, +3, +4... and the x2 power-up doubles it all
         perfectStreak = perfect ? perfectStreak + 1 : 0;
-        int points = perfect ? Mathf.Min(1 + perfectStreak, maxComboPoints) : 1;
+        int points = (perfect ? Mathf.Min(1 + perfectStreak, maxComboPoints) : 1) * powerUps.PointsMultiplier;
         score += points;
         ui.SetScore(score, true);
 
         Color color = perfect ? Theme.Highlight : Theme.Paddle;
-        string message = !perfect ? "+1" : perfectStreak > 1 ? "PERFECT x" + perfectStreak + "  +" + points : "PERFECT  +" + points;
+        string message = !perfect ? "+" + points : perfectStreak > 1 ? "PERFECT x" + perfectStreak + "  +" + points : "PERFECT  +" + points;
         effects.Burst(position + Vector2.down * ball.Radius, color, perfect ? 22 : 12, 6f, Vector2.up);
         effects.ShowPopup(message, position + Vector2.up * 0.8f, perfect ? Theme.Highlight : Theme.Text);
 
         // Pitch climbs as the score goes up
         SoundFX.Play(perfect ? Sound.Perfect : Sound.Paddle, 1f + Mathf.Min(score * 0.01f, 0.6f));
         cameraShake.Shake(perfect ? 0.12f : 0.06f, 0.12f);
+        if (perfect) Haptics.Medium(); else Haptics.Light();
 
         int newLevel = 1 + score / pointsPerLevel;
         if (newLevel > level) LevelUp(newLevel);
@@ -243,13 +302,41 @@ public class GameManager : MonoBehaviour
         level = newLevel;
         Color color = LevelColor(level);
 
-        float width = Mathf.Max(minPaddleWidth, player.StartWidth - paddleShrinkPerLevel * (level - 1));
-        player.SetWidth(width);
+        player.ResizeTo(BasePaddleWidth() * powerUps.WidthMultiplier);
         arena.SetWallColor(color);
         ui.SetLevel(level, color, true);
 
         effects.Burst(new Vector2(arena.CenterX, arena.Top - 1f), color, 30, 8f, Vector2.down);
         SoundFX.Play(Sound.LevelUp);
+        Haptics.Medium();
+        music.SetLevel(level);
+    }
+
+    // Paddle width for the current level and difficulty mode, before power-ups.
+    // It shrinks a bit every level, down to a minimum.
+    private float BasePaddleWidth()
+    {
+        float scale = Difficulty.Current.PaddleWidth;
+        return Mathf.Max(minPaddleWidth * scale, player.StartWidth * scale - paddleShrinkPerLevel * (level - 1));
+    }
+
+    // Called by PowerUps when one starts or runs out
+    public void RefreshPowerUpEffects()
+    {
+        player.ResizeTo(BasePaddleWidth() * powerUps.WidthMultiplier);
+        ball.SpeedMultiplier = powerUps.BallSpeedMultiplier;
+    }
+
+    // The ball bounced off the shield power-up instead of falling out
+    public void OnShieldUsed(Vector2 point)
+    {
+        powerUps.BreakShield();
+        Color color = Theme.PowerUpColors[(int)PowerUpType.Shield];
+        effects.Burst(point, color, 26, 8f, Vector2.up);
+        effects.ShowPopup("SAVED!", point + Vector2.up * 0.9f, color);
+        SoundFX.Play(Sound.Shield);
+        cameraShake.Shake(0.2f, 0.2f);
+        Haptics.Medium();
     }
 
     private static Color LevelColor(int level)
@@ -275,10 +362,12 @@ public class GameManager : MonoBehaviour
 
         Vector2 fallPoint = new Vector2(ball.transform.position.x, arena.Bottom + 0.1f);
         ball.Freeze();
+        powerUps.HideAll();
         effects.Burst(fallPoint, Theme.Danger, 30, 9f, Vector2.up);
         cameraShake.Shake(0.35f, 0.4f);
         SoundFX.Play(Sound.GameOver);
-        Settings.Vibrate();
+        Haptics.Heavy();
+        music.SetMood(Music.Mood.Muffled);
 
         bool newBest = score > Settings.BestScore;
         if (newBest) Settings.BestScore = score;
@@ -292,5 +381,17 @@ public class GameManager : MonoBehaviour
     {
         yield return new WaitForSecondsRealtime(0.7f);
         ui.ShowGameOver(score, Settings.BestScore, newBest, level);
+
+        // Celebrate a new best score with confetti
+        if (newBest && score > 0)
+        {
+            SoundFX.Play(Sound.LevelUp, 1.25f);
+            for (int i = 0; i < Theme.LevelColors.Length; i++)
+            {
+                Vector2 point = new Vector2(Random.Range(arena.Left + 1f, arena.Right - 1f), Random.Range(arena.Top - 5f, arena.Top - 2f));
+                effects.Burst(point, Theme.LevelColors[i], 18, 7f, Vector2.up);
+                yield return new WaitForSecondsRealtime(0.08f);
+            }
+        }
     }
 }
