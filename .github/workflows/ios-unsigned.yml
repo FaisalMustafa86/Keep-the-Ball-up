@@ -1,0 +1,68 @@
+# Builds an UNSIGNED iPhone app (.ipa) without owning a Mac or a paid Apple Developer account.
+#
+# Unity runs on your own PC (Tools > Keep the Ball Up > Build iOS), and tools/upload-ios-build.sh uploads
+# the exported Xcode project to a GitHub release. This workflow then compiles it on a free GitHub Mac.
+# Sign and install the .ipa with a free Apple ID using a sideloading tool (see iOS-BUILD.md).
+#
+# Unity itself never runs here, so no Unity licence is needed.
+
+name: iOS Unsigned Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release holding the zipped Xcode project"
+        default: ios-xcode
+        required: true
+
+jobs:
+  xcode-build:
+    name: Xcode build (unsigned .ipa)
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - name: Download Xcode project
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" --pattern "*.zip" --dir "$RUNNER_TEMP"
+          mkdir -p build
+          unzip -q "$RUNNER_TEMP"/*.zip -d build
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          PROJECT_DIR="build/iOS"
+
+          # Unity's build scripts must be executable
+          find "$PROJECT_DIR" -type f -name "*.sh" -exec chmod +x {} \;
+          find "$PROJECT_DIR" -type f -iname "usymtool*" -exec chmod +x {} \;
+
+          xcodebuild archive \
+            -project "$PROJECT_DIR/Unity-iPhone.xcodeproj" \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/KeepTheBallUp.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
+
+          # An .ipa is just a zip with the app inside a Payload folder
+          cd "$RUNNER_TEMP"
+          mkdir Payload
+          cp -R KeepTheBallUp.xcarchive/Products/Applications/*.app Payload/
+          zip -qry "$GITHUB_WORKSPACE/KeepTheBallUp-unsigned.ipa" Payload
+
+      - name: Upload unsigned .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeepTheBallUp-unsigned-ipa
+          path: KeepTheBallUp-unsigned.ipa
+          retention-days: 14
