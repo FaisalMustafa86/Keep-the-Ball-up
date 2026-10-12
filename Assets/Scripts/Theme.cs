@@ -7,7 +7,6 @@ public static class Theme
     public static readonly Color BackgroundBottom = new Color32(0x30, 0x2B, 0x63, 0xFF);
     public static readonly Color Stars = new Color32(0xFF, 0xFF, 0xFF, 0xFF);
 
-    public static readonly Color Walls = new Color32(0x3D, 0xF5, 0xFF, 0xFF);
     public static readonly Color Danger = new Color32(0xFF, 0x3B, 0x6B, 0xFF);
 
     public static readonly Color Paddle = new Color32(0x3D, 0xF5, 0xFF, 0xFF);
@@ -26,7 +25,7 @@ public static class Theme
     public static readonly Color ButtonSecondaryEdge = new Color32(0x0E, 0x07, 0x24, 0xF0);
     public static readonly Color ButtonOutline = new Color(1f, 1f, 1f, 0.16f);
 
-    // The walls change colour every level so players can feel the game moving on
+    // Each level has its own colour (level text, banner and particles) so players can feel the game moving on
     public static readonly Color[] LevelColors =
     {
         new Color32(0x3D, 0xF5, 0xFF, 0xFF), // cyan

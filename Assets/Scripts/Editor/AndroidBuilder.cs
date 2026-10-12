@@ -17,6 +17,9 @@ public static class AndroidBuilder
     [MenuItem("Tools/Keep the Ball Up/Build Android APK")]
     public static void BuildApk()
     {
+        // Save first, so Unity doesn't stop to ask (and cancel the build if the dialog is missed)
+        if (!Application.isBatchMode) SceneBuilder.SaveScenes();
+
         // The project only had a placeholder ID, which isn't a valid Android package name
         if (!PlayerSettings.GetApplicationIdentifier(NamedBuildTarget.Android).StartsWith("com.faisalmustafa"))
         {

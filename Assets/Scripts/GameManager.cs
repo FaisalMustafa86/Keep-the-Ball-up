@@ -228,7 +228,6 @@ public class GameManager : MonoBehaviour
         player.ResetPosition();
         ball.SpeedMultiplier = 1f;
         ball.ResetBall();
-        arena.SetWallColor(LevelColor(level));
         ui.SetBest(Settings.BestScore);
         ui.SetScore(0, false);
         ui.SetLevel(level, LevelColor(level), false);
@@ -303,7 +302,6 @@ public class GameManager : MonoBehaviour
         Color color = LevelColor(level);
 
         player.ResizeTo(BasePaddleWidth() * powerUps.WidthMultiplier);
-        arena.SetWallColor(color);
         ui.SetLevel(level, color, true);
 
         effects.Burst(new Vector2(arena.CenterX, arena.Top - 1f), color, 30, 8f, Vector2.down);
@@ -348,7 +346,6 @@ public class GameManager : MonoBehaviour
     {
         if (state != State.Playing) return;
 
-        arena.FlashWall(point);
         effects.Burst(point, LevelColor(level), 5, 3f, (new Vector2(arena.CenterX, 0f) - point).normalized);
         SoundFX.Play(Sound.Wall, Random.Range(0.95f, 1.05f));
     }

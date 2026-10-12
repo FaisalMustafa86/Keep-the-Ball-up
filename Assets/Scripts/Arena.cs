@@ -1,19 +1,17 @@
 using UnityEngine;
 
-// The play area. It zooms the camera so the play area is always the same width on every phone,
-// fits the background and walls to the screen edges, and keeps the top wall below the notch.
+// The play area. It zooms the camera so the play area is always the same width on every phone
+// and fits the background to the screen. There are no visible walls: the ball bounces off the edges of the screen.
 public class Arena : MonoBehaviour
 {
     public static Arena Instance { get; private set; }
-
-    private const float WallThickness = 0.12f;
 
     // Width of the play area in world units, the same on every phone
     private const float PlayWidth = 9f;
     private const float MinHalfHeight = 7f;
     private const int StarCount = 60;
 
-    // Inner edges of the play area (where the walls start)
+    // Edges of the play area: the left, right and top edges of the screen
     public float Left { get; private set; }
     public float Right { get; private set; }
     public float Top { get; private set; }
@@ -38,11 +36,6 @@ public class Arena : MonoBehaviour
 
     private SpriteRenderer background;
     private SpriteRenderer dangerZone;
-    private SpriteRenderer leftWall;
-    private SpriteRenderer rightWall;
-    private SpriteRenderer topWall;
-
-    private Color wallColor = new Color(Theme.Walls.r, Theme.Walls.g, Theme.Walls.b, 0.7f);
 
     private Transform[] stars;
     private SpriteRenderer[] starRenderers;
@@ -71,9 +64,7 @@ public class Arena : MonoBehaviour
             dangerZone.sortingOrder = 2;
         }
 
-        leftWall = CreateWall("Left Wall");
-        rightWall = CreateWall("Right Wall");
-        topWall = CreateWall("Top Wall");
+        RemoveOldWalls();
 
         CreateStars();
         Fit();
@@ -120,22 +111,18 @@ public class Arena : MonoBehaviour
         float left = center.x - halfWidth;
         float right = center.x + halfWidth;
         float bottom = center.y - halfHeight;
+        float top = center.y + halfHeight;
 
-        // Convert the safe area (in pixels) to world heights, to stay clear of notches and home bars
-        Rect safe = SafeArea;
-        float safeTop = bottom + safe.yMax / ScreenHeight * halfHeight * 2f;
-        float safeBottom = bottom + safe.yMin / ScreenHeight * halfHeight * 2f;
+        // The paddle still sits above the home bar / navigation bar, so convert that part of the safe area to world height
+        float safeBottom = bottom + SafeArea.yMin / ScreenHeight * halfHeight * 2f;
 
         // A little bigger than the screen so camera shake never shows the edges
         Place(background.transform, center, new Vector2(halfWidth * 2f + 2f, halfHeight * 2f + 2f), background.sprite);
         Place(dangerZone.transform, new Vector2(center.x, bottom + 0.75f), new Vector2(halfWidth * 2f, 1.5f), dangerZone.sprite);
-        Place(leftWall.transform, new Vector2(left + WallThickness / 2f, center.y), new Vector2(WallThickness, halfHeight * 2f + 2f), leftWall.sprite);
-        Place(rightWall.transform, new Vector2(right - WallThickness / 2f, center.y), new Vector2(WallThickness, halfHeight * 2f + 2f), rightWall.sprite);
-        Place(topWall.transform, new Vector2(center.x, safeTop - WallThickness / 2f), new Vector2(halfWidth * 2f, WallThickness), topWall.sprite);
 
-        Left = left + WallThickness;
-        Right = right - WallThickness;
-        Top = safeTop - WallThickness;
+        Left = left;
+        Right = right;
+        Top = top;
         Bottom = bottom;
         SafeBottom = safeBottom;
 
@@ -151,40 +138,16 @@ public class Arena : MonoBehaviour
         return center.x + (screenX / Screen.width - 0.5f) * screenHalfWidth * 2f;
     }
 
-    // Briefly light up the wall the ball just hit
-    public void FlashWall(Vector2 hitPoint)
+    // Earlier versions had visible walls saved in the scene; remove them
+    private void RemoveOldWalls()
     {
-        SpriteRenderer wall = hitPoint.y >= Top - 0.01f ? topWall : hitPoint.x < CenterX ? leftWall : rightWall;
-        wall.color = Color.white;
-    }
-
-    void LateUpdate()
-    {
-        FadeWall(leftWall);
-        FadeWall(rightWall);
-        FadeWall(topWall);
-    }
-
-    private void FadeWall(SpriteRenderer wall)
-    {
-        wall.color = Color.Lerp(wall.color, wallColor, Time.deltaTime * 8f);
-    }
-
-    // Change the colour of the walls (they fade to it smoothly)
-    public void SetWallColor(Color color)
-    {
-        wallColor = new Color(color.r, color.g, color.b, 0.7f);
-    }
-
-    private SpriteRenderer CreateWall(string name)
-    {
-        if (SceneObjects.GetOrCreate(transform, name, out SpriteRenderer sr))
+        foreach (string name in new[] { "Left Wall", "Right Wall", "Top Wall" })
         {
-            sr.sprite = SpriteFactory.Square;
-            sr.color = wallColor;
-            sr.sortingLayerName = "Player";
+            Transform wall = transform.Find(name);
+            if (wall == null) continue;
+            if (Application.isPlaying) Destroy(wall.gameObject);
+            else DestroyImmediate(wall.gameObject);
         }
-        return sr;
     }
 
     private void CreateStars()

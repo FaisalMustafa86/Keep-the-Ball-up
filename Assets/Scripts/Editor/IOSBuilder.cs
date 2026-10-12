@@ -18,6 +18,9 @@ public static class IOSBuilder
     [MenuItem("Tools/Keep the Ball Up/Build iOS (Xcode project)")]
     public static void BuildXcodeProject()
     {
+        // Save first, so Unity doesn't stop to ask (and cancel the build if the dialog is missed)
+        if (!Application.isBatchMode) SceneBuilder.SaveScenes();
+
         if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.iOS, BuildTarget.iOS))
         {
             Debug.LogError("[IOSBuilder] iOS Build Support isn't loaded. If you just installed it, restart Unity.");
